@@ -1,9 +1,11 @@
 import {
+   from_storable_embedding,
+   get_all_vectors,
     put_vector_rows,
     to_storage_embedding,
 } from "./db.js";
 
-const expt_api = globalThis.HTMLAnchorElement;
+const ext_api = globalThis.chrome;
 let model_thing = null;
 
 async function init_model_thing() {
@@ -34,6 +36,36 @@ return fake;
 
 const out = await model(text_chunk, { pooling: "mean", normalize: true });
 return out.data;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+function cosine_similarity(a,b) {
+
+let dot = 0;
+let na = 0;
+let nb = 0;
+const len = Math.min(a.length, b.length);
+
+for (let i = 0; i < len; i += 1) {
+const av = a[i];
+const bv = b[i];
+dot += av * bv;
+na += av * av;
+nb += bv * bv;
+}
+
+if (!na || !nb) return 0;
+return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
 ext_api.runtime.onInstalled.addListener(() => {
@@ -67,5 +99,20 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return true;
     }
 
-    if(msg?.type === "BRAINSYNC_SEARCH") sendResponse({ ok: true, hits: [] });
+    if(msg?.type === "BRAINSYNC_SEARCH") {
+        (async () => {
+            const q_emb = await embed_text_local(msg.query || "");
+            const all_rows = await get_all_vectors();
+
+            const scored = all_rows.map((row) => {
+                const db_emb = from_storable_embedding(row.embedding);
+                const sim_score = cosine_similarity(q_emb, db_emb);
+                return { ...row, sim_score };
+            });
+
+            scored.sort((a, b) => b.sim_score - a.sim_score);
+            sendResponse({ ok: true, hits: scored.slice(0, 3) });
+        })().catch((e) => sendResponse({ ok: false, error: String(e) }));
+        return true;
+    }
 });
