@@ -1,6 +1,7 @@
 const query_input = document.getElementById("query");
-const search_btn = document.getElementById("search-btn");
-const result_div = document.getElementById("result");
+const search_btn = document.getElementById("search_btn");
+const clip_btn = document.getElementById("clip_btn");
+const result_div = document.getElementById("results");
 
 async function get_active_tab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -11,8 +12,11 @@ async function trigger_clip() {
     const tab = await get_active_tab();
     if(!tab?.id) return;
 
+   results_div.textContent = "Clipping page now...";
+   
     try {
         await chrome.tabs.sendMessage(tab.id, { type: "BRAINSYNC_CLIP" });
+        result_div.textContent = "Clipping page now...";
     } catch {
 
     await chrome.scripting.executeScript({
@@ -20,6 +24,7 @@ async function trigger_clip() {
         files: ["content.js"],
     });
     await chrome.tabs.sendMessage(tab.id, { type: "BRAINSYNC_CLIP" });
+    result_div.textContent = "Inject content script, clipping now."
 }
 }
 
@@ -50,7 +55,6 @@ search_btn.addEventListener("click", async () => {
     if(!raw_q) return;
 
     const res = await chrome.runtime.sendMessage({
-        type: "BRAINSYNC_SEARCH",
         query: raw_q,
     });
 
@@ -61,4 +65,9 @@ query_input.addEventListener("keydown", (ev) => {
     if(ev.key === "Enter") search_btn.click();
 });
 
-trigger_clip();
+
+clip_btn.addEventListener("click", () => {
+    trigger_clip().catch((e) => {
+   result_div.textContent = `Clip failed: ${String(e)}`;
+    });
+});
