@@ -1,7 +1,10 @@
 import {
-   from_storable_embedding,
+    clear_all_vectors,
+    delete_vectors_for_url,
+    from_storable_embedding,
    get_all_vectors,
-    put_vector_rows,
+   get_vector_stats,
+   put_vector_rows,
     to_storage_embedding,
 } from "./db.js";
 
@@ -83,7 +86,14 @@ await ext_api.tabs.sendMessage(tab.id, { type: "BRAINSYNC_CLIP" });
 ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if(msg?.type === "BRAINSYNC_STORE_PAGE") {
         const current_tab_data = msg.payload;
+       const tab_id = sender?.tab?.id;
         (async () => {
+           if(tab_id) {
+           await ext_api.tabs.sendMessage(tab_id, { type: "BRAINSYNC_PROGRESS", label: "Embedding (Local)...", pct: 40 });
+           }
+           
+           await delete_vectors_for_url(current_tab_data.url);
+           
             const rows = [];
             for (let i = 0; i < current_tab_data.length; i += 1) {
                 const text_chunk = current_tab_data[i];
@@ -95,6 +105,12 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     text_chunk,
                     embedding: to_storage_embedding(emb),
                 });
+           
+           if(tab_id) {
+           
+           const pct = 40 + Math.round((i + 1) / current_tab_data.chunks,length) * 55);
+             await ext_api.tabs.sendMessage(tab_id, { type: "BRAINSYNC_PROGRESS", label: "Embedding (Local)...", pct });
+           
             }
             await put_vector_rows(rows);
             sendResponse({ ok: true, stored: rows.length });
