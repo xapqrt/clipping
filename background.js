@@ -108,11 +108,17 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
            
            if(tab_id) {
            
-           const pct = 40 + Math.round((i + 1) / current_tab_data.chunks,length) * 55);
+           const pct = 40 + Math.round((i + 1) / current_tab_data.chunks.length) * 55);
              await ext_api.tabs.sendMessage(tab_id, { type: "BRAINSYNC_PROGRESS", label: "Embedding (Local)...", pct });
-           
+    }
             }
+          
             await put_vector_rows(rows);
+            
+            if(tab_id) {
+              await ext_api.tabs.sendMessage(tab_id, { type: "BRAINSYNC_PROGRESS", label: "Saved to Brain-Sync", pct: 100 });
+            }
+
             sendResponse({ ok: true, stored: rows.length });
         })().catch((e) => sendResponse({ ok: false, error: String(e) }));
         return true;
@@ -130,8 +136,45 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             });
 
             scored.sort((a, b) => b.sim_score - a.sim_score);
-            sendResponse({ ok: true, hits: scored.slice(0, 3) });
+          
+     
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      const best_by_url = new Map();
+      for(const row of scored) {
+         const prev = best_by_url.get(row.url);
+        if(!prev || row.sim_score > prev.sim_score) {
+      best_by_url.set(row.url, row);
+        }
+    }
+      
+     const reranked = Array.from(best_by_url.values()).sort((a,b) => b.sim_score - a.sim_score) 
+      sendResponse({ ok: true, hits: reranked.slice(0, 3) });
         })().catch((e) => sendResponse({ ok: false, error: String(e) }));
         return true;
     }
+
+if(msg?.type === "BRAINSYNC_STATS") {
+(async () => {
+  const stats = await get_vector_stats();
+   sendResponse({ ok: true, stats });
+ })().catch((e) => sendResponse({ ok: false, error: String(e), stats: { total_chunks: 0, unique_urls: 0 } }));
+return true;
+}
+
+if(msg?.type === "BRAINSYNC_CLEAR_ALL") {
+ (async () => {
+    await clear_all_vectors();
+    sendResponse({ ok: true });
+    })().catch((e) => sendResponse({ ok: false, error: String(e) }));
+return true;
+}
 });
