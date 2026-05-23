@@ -2,7 +2,13 @@ const query_input = document.getElementById("query");
 const search_btn = document.getElementById("search_btn");
 const clip_btn = document.getElementById("clip_btn");
 const clear_btn = document.getElementById("clear_btn");
+const export_btn = document.getElementById("export_btn");
+const import_btn = document.getElementById("import_btn");
+const import_file_input = document.getElementById("import_file");
 const stats_div = document.getElementById("stats");
+const recent_div = document.getElementById("recent");
+const domain_filter_input = document.getElementById("domain_filter");
+const min_score_input = document.getElementById("min_score");
 const result_div = document.getElementById("results");
 
 async function refresh_stats() {
@@ -14,6 +20,22 @@ stats_div.textContent = `chunks: ${stats.total_chunks} | pages: ${stats.unique_u
 async function get_active_tab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     return tab;
+}
+
+async function refresh_recent() {
+ const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_RECENT" });
+const items = res?.items || [];
+if (!items.length) {
+    recent_div.textContent = "recent clips will show here...";
+   return;
+}
+
+recent_div.innerHTML = items
+.map((x) => {
+     const label = x.title || "untitled";
+    return `<div style="margin-bottom:5px;"><a href="${x.url}" target="_blank">${label}</a></div>`;
+})
+.join("");
 }
 
 async function trigger_clip() {
@@ -71,14 +93,19 @@ search_btn.addEventListener("click", async () => {
     result_div.textContent = "Searching local vectors...";
     
    try {
+    const domain_filter = domain_filter_input.value.trim();
+    const min_score = min_score_input.value.trim();
     const res = await chrome.runtime.sendMessage({ 
         type: "BRAINSYNC_SEARCH",
         query: raw_q,
+        domain_filter,
+      min_score: min_score ? Number(min_score) : -1
     });
 
     render_hits(res?.hits || []);
     refresh_stats().catch(() => {});
-} finally {
+    refresh_recent().catch(() => {});
+}finally {
     search_btn.disabled = false;
 }
 });
@@ -86,7 +113,6 @@ search_btn.addEventListener("click", async () => {
 query_input.addEventListener("keydown", (ev) => {
     if(ev.key === "Enter") search_btn.click();
 });
-
 
 clip_btn.addEventListener("click", () => {
     trigger_clip().catch((e) => {
@@ -103,8 +129,51 @@ clear_btn.addEventListener("click", async () => {
     const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_CLEAR_ALL" });\
     result_div.textContent = res?.ok ? "Local vault cleared." : "Clear failed.";
     await refresh_stats();
+    await refresh_recent();
+});
+
+export_btn.addEventListener("click", async () => {
+const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_EXPORT_ALL" });
+if(!res?.ok || !res.payload) {
+results_div.textContent = "Export failed.";
+return;
+}
+
+const blob = new Blob([JSON.stringify(res.payload,null,2)], { type: "application/json" });
+const a = document.createElement("a");
+a.href = URL.createObjectURL(blob);
+a.download = "brainsync-backup-${Date.now()}.json";
+a.click();
+URL.revokeObjectURL(a.href);
+result_div.textContent = `Exported ${res.payload.count} chunks.`;
+});
+
+import_btn.addEventListener("click", () => import_file.click());
+
+import_file_input.addEventListener("change", async () => {
+const file = import_file_input.files?.[0];
+if(!file) return;
+
+try {
+const text = await file.text();
+const payload = JSON.parse(text);
+const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_IMPORT_ALL", payload });
+if(!res?.ok) {
+result_div.textContent = "Import failed.";
+return;
+}
+result_div.textContent = "Import complete.";
+await refresh_stats();
+await refresh_recent();
+}catch(e) {
+result_div.textContent = `Import failed: ${String(e)}`;
+} finally {
+import_file.value = "";
+}
 });
 
 refresh_stats().catch((e) => {
     result_div.textContent = `Stats failed: ${String(e)}`;
 });
+
+refresh_recent().catch(() => {});
