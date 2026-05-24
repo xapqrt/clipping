@@ -148,6 +148,25 @@ req.onerror = () => reject(req.error);
 });
 }
 
+export async function get_domain_counts(limit = 10) {
+ const rows = await get_all_vectors();
+    const counts = new Map();
+
+for (const row of rows) {
+  try {
+     const domain = new URL(row.url).hostname.toLowerCase();
+     counts.set(domain, (counts.get(domain) || 0) + 1);
+  } catch {
+ 
+  }
+}
+
+return Array.from(counts.entries())
+.map(([domain, chunks]) => ({ domain, chunks }))
+.sort((a, b) => b.chunks - a.chunks)
+.slice(0, Math.max(1, Number(limit) || 10));
+}
+
 export async function export_all_vectors_payload() {
 const rows = await get_all_vectors();
 return {
