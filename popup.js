@@ -11,6 +11,7 @@ const domains_div = document.getElementById("domains");
 const domain_filter_input = document.getElementById("domain_filter");
 const min_score_input = document.getElementById("min_score");
 const result_div = document.getElementById("results");
+let last_hits = [];
 
 async function refresh_stats() {
 const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_STATS" });
@@ -76,11 +77,27 @@ async function trigger_clip() {
 }
 
 function render_hits(hits) {
+    last_hits = hits;
     if(!hits?.length) {
         result_div.textContent = "No matches yet.";
         return;
     }
 
+    const q_words = query_input.value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    
+     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const marks = (txt) => {
+     let out = txt;
+    for(const w of q_words) {
+     const re = new RegExp(`(${esc(w)})`, "ig");
+     out = out.replace(re, "<mark>$1</mark>");
+    }
+    return out;
+};
+    
     const html = hits
     .map((item) => {
        const text = String(item.text_chunk || "");
@@ -89,7 +106,7 @@ function render_hits(hits) {
         return `
         <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed #999;">
            <div><strong>${item.title || "untitled"}</strong><span style="opacity:.7">score ${score}</span></div>
-           <div style ="margin:4px 0;>${snip}...</div>
+           <div style ="margin:4px 0;">${marks(snip)}...</div>
            <a href="${item.url}" target="_blank">open source</a>
         </div>
         `;
@@ -119,12 +136,21 @@ search_btn.addEventListener("click", async () => {
     render_hits(res?.hits || []);
     refresh_stats().catch(() => {});
     refresh_recent().catch(() => {});
+    refresh_domains().catch(() => {});
 }finally {
     search_btn.disabled = false;
 }
 });
 
 query_input.addEventListener("keydown", (ev) => {
+     if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+      if (last_hits[0]?.url) {
+     chrome.tabs.create({ url: last_hits[0].url });
+    return;
+      }
+     }
+    
+    
     if(ev.key === "Enter") search_btn.click();
 });
 
