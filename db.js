@@ -49,6 +49,8 @@ for(const row of rows) {
         title: row.title,
         text_chunk: row.text_chunk,
         embedding: row.embedding,
+        stored_at: row.stored_at || Date.now(),
+        source: row.source || "page"
     });
 }
 

@@ -144,6 +144,8 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     title: current_tab_data.title,
                     text_chunk,
                     embedding: to_storage_embedding(emb),
+                    stored_at: Date.now(),
+                    source: current_tab_data.source || "page",
                 });
            
            
