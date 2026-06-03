@@ -34,6 +34,7 @@ await ext_api.scripting.executeScript({
  target: { tabId: tab_id },
 files: ["content.js"],
 });
+await new Promise((resolve) => setTimeout(resolve, 150));
 await ext_api.tabs.sendMessage(tab_id, { type: "CLIPPER_CLIP" });
 }
 }
@@ -46,7 +47,10 @@ async function init_model_thing() {
     try {
         const lib = await import("./vendor/transformers.min.js");
         const env = lib.env;
-        env.backends.onnX.wasm.wasmPaths = chrome.runtime.getURL("wasm/");
+        if (env.backends && env.backends.onnx) {
+            env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("wasm/");
+            env.backends.onnx.wasm.numThreads = 1;
+        }
         model_thing = await lib.pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
             quantized: true
         });

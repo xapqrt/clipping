@@ -1,5 +1,5 @@
 const DB_NAME = "clipper_vector_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = "vector_chunks";
 
 let vector_db = null;
@@ -13,8 +13,14 @@ export async function open_vector_db() {
         req.onupgradeneeded = () => {
             const db = req.result;
             if(!db.objectStoreNames.contains(STORE)) {
-            const os = db.createObjectStore(STORE, { keyPath: "id"  });
-            os.createIndex("url", "url", { unique: false });
+                const os = db.createObjectStore(STORE, { keyPath: "id"  });
+                os.createIndex("url", "url", { unique: false });
+            } else {
+                const transaction = req.transaction;
+                const os = transaction.objectStore(STORE);
+                if (!os.indexNames.contains("url")) {
+                    os.createIndex("url", "url", { unique: false });
+                }
             }
         };
 
@@ -72,7 +78,10 @@ await new Promise((resolve, reject) => {
 
     req.onsuccess = () => {
         const cursor = req.result;
-        if (!cursor) return;
+        if (!cursor) {
+            resolve(true);
+            return;
+        }
         st.delete(cursor.primaryKey);
         cursor.continue();
     };

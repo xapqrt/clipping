@@ -91,6 +91,7 @@ async function trigger_clip() {
         target: { tabId: tab.id },
         files: ["content.js"],
     });
+    await new Promise((resolve) => setTimeout(resolve, 150));
     await chrome.tabs.sendMessage(tab.id, { type: "CLIPPER_CLIP" });
     result_div.textContent = "Inject content script, clipping now.";
 } finally {
