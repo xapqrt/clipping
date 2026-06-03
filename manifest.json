@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Brain=Sync",
+    "name": "Clipper",
     "version": "0.0.1",
-    "description": "Local-first sematic web clipper",
+    "description": "Local-first semantic web clipper",
     "permissions": ["storage", "activeTab", "scripting", "contextMenus", "tabs"],
     "host_permissions": ["<all_urls>"],
     "background": {
@@ -11,7 +11,7 @@
     },
     "action": {
         "default_popup": "popup.html",
-        "default_title": "Brain=Sync"
+        "default_title": "Clipper"
     },
     "content_scripts": [
         {

@@ -9,15 +9,15 @@ function ensure_toast() {
         "font:12px/1.4 ui-monospace,Menlo,monospace", "box-shadow:0 8px 24px rgba(0,0,0,.35)",
         "mini-width:220px"
     ].join(";");
-    toast_node.innerHTML = `<div id="brainsync_msg">starting...</div><div style="height:4px;background:#333;border-radius:10px;margin-top:8px;overflow:hidden"><div id="brainsync_bar" style="height:100%;width:0;background:#66e2b3"></div></div>`;
+    toast_node.innerHTML = `<div id="clipper_msg">starting...</div><div style="height:4px;background:#333;border-radius:10px;margin-top:8px;overflow:hidden"><div id="clipper_bar" style="height:100%;width:0;background:#66e2b3"></div></div>`;
     document.documentElement.appendChild(toast_node);
     return toast_node;
 }
 
 function toast_step(label, pct) {
     const root = ensure_toast();
-    root.querySelector("#brainsync_msg").textContent = label;
-    root.querySelector("#brainsync_bar").style.width = `${pct}%`;
+    root.querySelector("#clipper_msg").textContent = label;
+    root.querySelector("#clipper_bar").style.width = `${pct}%`;
 }
 
 function extract_mainish_text() {
@@ -32,7 +32,7 @@ function extract_mainish_text() {
      return cleaned;
 }
 
-function chunk_by_words(text, words_per_chunk = 500) {
+function chunk_by_words(text, words_per_chunk = 300) {
 
 const all_words = text.split(/\s+/).filter(Boolean);
 const chunks = [];
@@ -72,12 +72,12 @@ return;
 }
 
 const res = await chrome.runtime.sendMessage({
-    type: "BRAINSYNC_STORE_PAGE",
+    type: "CLIPPER_STORE_PAGE",
     payload
 });
 
 if(res?.ok) {
-    toast_step("Saved to Brain-Sync", 100);
+    toast_step("Saved to Clipper", 100);
 } else {
     toast_step("Save Failed, check console", 100);
 }
@@ -89,12 +89,12 @@ setTimeout(() => {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-if (msg?.type === "BRAINSYNC_CLIP") {
+if (msg?.type === "CLIPPER_CLIP") {
     run_clip_flow().catch((err) => console.error("clip flow failed", err));
     return;
 }
 
-if (msg?.type === "BRAINSYNC_PROGRESS") {
+if (msg?.type === "CLIPPER_PROGRESS") {
      const label = msg.label || "working...";
         const pct = Number(msg.pct) || 0;
          toast_step(label, pct);

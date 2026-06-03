@@ -24,7 +24,7 @@ function escape_html(value) {
 
 async function refresh_stats() {
 try {
-    const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_STATS" });
+    const res = await chrome.runtime.sendMessage({ type: "CLIPPER_STATS" });
     const stats = res?.stats || { total_chunks: 0, unique_urls: 0 };
     stats_div.textContent = `chunks: ${stats.total_chunks} | pages: ${stats.unique_urls}`;
   } catch {
@@ -39,7 +39,7 @@ async function get_active_tab() {
 
 async function refresh_recent() {
  try {
-     const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_RECENT" });
+     const res = await chrome.runtime.sendMessage({ type: "CLIPPER_RECENT" });
      const items = res?.items || [];
      if (!items.length) {
        recent_div.textContent = "recent clips will show here...";
@@ -60,7 +60,7 @@ async function refresh_recent() {
 
 async function refresh_domains() {
     try {
-       const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_DOMAIN_COUNTS" });
+       const res = await chrome.runtime.sendMessage({ type: "CLIPPER_DOMAIN_COUNTS" });
        const items = res?.items || [];
        if (!items.length) {
          domains_div.textContent = "top domains will show here...";
@@ -79,11 +79,11 @@ async function trigger_clip() {
     const tab = await get_active_tab();
     if(!tab?.id) return;
 
-   results_div.textContent = "Clipping page now...";
+   result_div.textContent = "Clipping page now...";
    clip_btn.disabled = true;
    
    try {
-        await chrome.tabs.sendMessage(tab.id, { type: "BRAINSYNC_CLIP" });
+        await chrome.tabs.sendMessage(tab.id, { type: "CLIPPER_CLIP" });
         result_div.textContent = "Clipping page now...";
     } catch {
 
@@ -91,8 +91,8 @@ async function trigger_clip() {
         target: { tabId: tab.id },
         files: ["content.js"],
     });
-    await chrome.tabs.sendMessage(tab.id, { type: "BRAINSYNC_CLIP" });
-    result_div.textContent = "Inject content script, clipping now."
+    await chrome.tabs.sendMessage(tab.id, { type: "CLIPPER_CLIP" });
+    result_div.textContent = "Inject content script, clipping now.";
 } finally {
     clip_btn.disabled = false;
 }
@@ -140,12 +140,12 @@ function render_hits(hits) {
     result_div.innerHTML = html;
 
 
- const copyBtns = results_div.querySelectorAll(".copy_btn");
+  const copyBtns = result_div.querySelectorAll(".copy_btn");
 copyBtns.forEach((b) => {
  b.addEventListener("click", async (ev) => {
   try {
  await navigator.clipboard.writeText(b.getAttribute("data-text") || "");
-   results_div.textContent = "Snippet copied to clipboard.";
+   result_div.textContent = "Snippet copied to clipboard.";
  setTimeout(() => refresh_stats().catch(() => {}), 800)
   } catch {
    result_div.textContent = "Copy failed.";
@@ -165,7 +165,7 @@ search_btn.addEventListener("click", async () => {
     const domain_filter = domain_filter_input.value.trim();
     const min_score = min_score_input.value.trim();
     const res = await chrome.runtime.sendMessage({ 
-        type: "BRAINSYNC_SEARCH",
+        type: "CLIPPER_SEARCH",
         query: raw_q,
         domain_filter,
       min_score: min_score ? Number(min_score) : -1
@@ -204,7 +204,7 @@ result_div.textContent = `Clip failed: ${msg}`;
 });
 
 clear_btn.addEventListener("click", async () => {
-    const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_CLEAR_ALL" });\
+    const res = await chrome.runtime.sendMessage({ type: "CLIPPER_CLEAR_ALL" });
     result_div.textContent = res?.ok ? "Local vault cleared." : "Clear failed.";
     await refresh_stats();
     await refresh_recent();
@@ -212,9 +212,9 @@ clear_btn.addEventListener("click", async () => {
 
 export_btn.addEventListener("click", async () => {
 try {
-    const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_EXPORT_ALL" });
+    const res = await chrome.runtime.sendMessage({ type: "CLIPPER_EXPORT_ALL" });
     if (!res?.ok || !res.payload) {
-      results_div.textContent = "Export failed.";
+      result_div.textContent = "Export failed.";
       return;
     }
    
@@ -222,16 +222,16 @@ try {
     const a = document.createElement("a");
     const obj_url = URL.createObjectURL(blob);
     a.href = obj_url;
-    a.download = `brainsync-backup-${Date.now()}.json`;
+    a.download = `clipper-backup-${Date.now()}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(obj_url), 500);
-    results_div.textContent = `Exported ${res.payload.count} chunks.`;
+    result_div.textContent = `Exported ${res.payload.count} chunks.`;
   } catch {
-results_div.textContent = "Export failed.";
+    result_div.textContent = "Export failed.";
 }
 });
 
-import_btn.addEventListener("click", () => import_file.click());
+import_btn.addEventListener("click", () => import_file_input.click());
 
 import_file_input.addEventListener("change", async () => {
 const file = import_file_input.files?.[0];
@@ -240,7 +240,7 @@ if(!file) return;
 try {
 const text = await file.text();
 const payload = JSON.parse(text);
-const res = await chrome.runtime.sendMessage({ type: "BRAINSYNC_IMPORT_ALL", payload });
+const res = await chrome.runtime.sendMessage({ type: "CLIPPER_IMPORT_ALL", payload });
 if(!res?.ok) {
 result_div.textContent = "Import failed.";
 return;
@@ -251,7 +251,7 @@ await refresh_recent();
 }catch(e) {
 result_div.textContent = `Import failed: ${String(e)}`;
 } finally {
-import_file.value = "";
+import_file_input.value = "";
 }
 });
 

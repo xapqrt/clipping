@@ -1,4 +1,4 @@
-const DB_NAME = "brainsync_vector_db";
+const DB_NAME = "clipper_vector_db";
 const DB_VERSION = 1;
 const STORE = "vector_chunks";
 
@@ -143,7 +143,7 @@ return new Promise((resolve, reject) => {
  req.onsuccess = () => {
     const rows = req.result || [];
     const urls = new Set(rows.map((r) => r.url).filter(Boolean));
-    resolve({ total_chunk: rows.length, unique_url: urls.size });
+    resolve({ total_chunks: rows.length, unique_urls: urls.size });
  };
 
 req.onerror = () => reject(req.error);
@@ -192,7 +192,7 @@ rows
 
 export async function import_vectors_payload(payload) {
 if(!payload || payload.schema !== 1 || !Array.isArray(payload.rows)) {
-throw new Error("Invalid import payloas"):
+throw new Error("Invalid import payload");
 }
 
 const db = await open_vector_db();

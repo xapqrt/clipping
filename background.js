@@ -8,33 +8,33 @@ import {
    get_vector_stats,
    import_vectors_payload,
    put_vector_rows,
-    to_storage_embedding,
+    to_storable_embedding,
 } from "./db.js";
 
 const ext_api = globalThis.chrome;
 let model_thing = null;
 let model_boot_attempted = false;
 
-async function safe_send_progess(tab_id, label, pct) {
+async function safe_send_progress(tab_id, label, pct) {
 if (!tab_id) return;
 try {
-await ext_api.tabs.sendMessage(tab_id, { type: "BRAINSYNC_PROGRESS", label, pct });
-} catch {
-
-
-
+await ext_api.tabs.sendMessage(tab_id, { type: "CLIPPER_PROGRESS", label, pct });
+} catch (err) {
+console.warn("Failed to send progress message:", err);
+}
+}
 
 async function trigger_clip_on_tab(tab_id) {
 if(!tab_id) return;
 
 try {
-await ext_api.tabs.sendMessage(tab_id, { type: "BRAINSYNC_CLIP" });
+await ext_api.tabs.sendMessage(tab_id, { type: "CLIPPER_CLIP" });
 } catch {
 await ext_api.scripting.executeScript({
  target: { tabId: tab_id },
 files: ["content.js"],
 });
-await ext_api.tabs.sendMessage(tab_id, { type: "BRAINSYNC_CLIP" });
+await ext_api.tabs.sendMessage(tab_id, { type: "CLIPPER_CLIP" });
 }
 }
 
@@ -102,17 +102,17 @@ return dot / (Math.sqrt(na) * Math.sqrt(nb));
 
 ext_api.runtime.onInstalled.addListener(() => {
    ext_api.contextMenus.removeAll(() => {
- ext_api.contextMenus.create({ id: "brainsync-clip", title: "Save page to Brain-Sync", contexts: ["page"] });
+ ext_api.contextMenus.create({ id: "clipper-clip", title: "Save page to Clipper", contexts: ["page"] });
    });
 });
 
 ext_api.contextMenus.onClicked.addListener(async (info, tab) => {
-    if(info.menuItemId !== "brainsync-clip" || !tab?.id) return;
+    if(info.menuItemId !== "clipper-clip" || !tab?.id) return;
 await trigger_clip_on_tab(tab.id);
 });
 
 ext_api.commands.onCommand.addListener(async (command) => {
-if(command !== "brainsync-clip-activet") return;
+if(command !== "clipper-clip-activet") return;
 
 const tabs = await ext_api.tabs.query({ active: true, currentWindow: true });
 const tab = tabs?.[0];
@@ -122,7 +122,7 @@ await trigger_clip_on_tab(tab.id);
 });
 
 ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if(msg?.type === "BRAINSYNC_STORE_PAGE") {
+    if(msg?.type === "CLIPPER_STORE_PAGE") {
         const current_tab_data = msg.payload;
        const tab_id = sender?.tab?.id;
         (async () => {
@@ -135,15 +135,15 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
            await delete_vectors_for_url(current_tab_data.url);
            
             const rows = [];
-            for (let i = 0; i < current_tab_data.length; i += 1) {
-                const text_chunk = current_tab_data[i];
+            for (let i = 0; i < current_tab_data.chunks.length; i += 1) {
+                const text_chunk = current_tab_data.chunks[i];
                 const emb = await embed_text_local(text_chunk);
                 rows.push({
                     id: `${current_tab_data.url}::${Date.now()}::${i}`,
                     url: current_tab_data.url,
                     title: current_tab_data.title,
                     text_chunk,
-                    embedding: to_storage_embedding(emb),
+                    embedding: to_storable_embedding(emb),
                     stored_at: Date.now(),
                     source: current_tab_data.source || "page",
                 });
@@ -155,14 +155,14 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
             await put_vector_rows(rows);
            
-             await safe_send_progress(tab_id, "Saved to Brain-Sync", 100);
+             await safe_send_progress(tab_id, "Saved to Clipper", 100);
 
             sendResponse({ ok: true, stored: rows.length });
         })().catch((e) => sendResponse({ ok: false, error: String(e) }));
         return true;
     }
 
-    if(msg?.type === "BRAINSYNC_SEARCH") {
+    if(msg?.type === "CLIPPER_SEARCH") {
         (async () => {
             const q_emb = await embed_text_local(msg.query || "");
             const raw_min_score = Number(msg.min_score ?? -1);
@@ -220,7 +220,7 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return true;
     }
 
-if(msg?.type === "BRAINSYNC_STATS") {
+if(msg?.type === "CLIPPER_STATS") {
 (async () => {
   const stats = await get_vector_stats();
    sendResponse({ ok: true, stats });
@@ -228,7 +228,7 @@ if(msg?.type === "BRAINSYNC_STATS") {
 return true;
 }
 
-if(msg?.type === "BRAINSYNC_CLEAR_ALL") {
+if(msg?.type === "CLIPPER_CLEAR_ALL") {
  (async () => {
     await clear_all_vectors();
     sendResponse({ ok: true });
@@ -236,7 +236,7 @@ if(msg?.type === "BRAINSYNC_CLEAR_ALL") {
 return true;
 }
 
-if(msg?.type === "BRAINSYNC_EXPORT_ALL") {
+if(msg?.type === "CLIPPER_EXPORT_ALL") {
     (async () => {
  const payload = await export_all_vectors_payload();
 sendResponse({ ok: true, payload });
@@ -244,7 +244,7 @@ sendResponse({ ok: true, payload });
 return true;
 }
 
-if(msg?.type === "BRAINSYNC_IMPORT_ALL") {
+if(msg?.type === "CLIPPER_IMPORT_ALL") {
     (async () => {
         await import_vectors_payload(msg.payload);
         const stats = await get_vector_stats();
@@ -253,7 +253,7 @@ if(msg?.type === "BRAINSYNC_IMPORT_ALL") {
     return true;
 }
 
-if(msg?.type === "BRAINSYNC_RECENT") {
+if(msg?.type === "CLIPPER_RECENT") {
     (async () => {
         const rows = await get_all_vectors();
         const by_url = new Map();
@@ -280,7 +280,7 @@ const recent = Array.from(by_url.values())
     return true;
 }
 
-if(msg?.type === "BRAINSYNC_DOMAIN_COUNTS") {
+if(msg?.type === "CLIPPER_DOMAIN_COUNTS") {
    (async () => {
      const items = await get_domain_counts(8);
         sendResponse({ ok: true, items });
@@ -288,7 +288,7 @@ if(msg?.type === "BRAINSYNC_DOMAIN_COUNTS") {
     return true;
 }
 
-if (msg?.type === "BRAINSYNC_HEALTH") {
+if (msg?.type === "CLIPPER_HEALTH") {
     (async () => {
       const stats = await get_vector_stats();
       const model = Boolean(model_thing);
