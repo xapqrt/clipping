@@ -1,34 +1,21 @@
 # Clipper
 
-A completely local semantic web clipper for Chrome. It lets you save web content and actually search through it based on meaning—not just exact keyword matches.
+A completely local semantic web clipper for Chrome. It lets you save web content and actually search through it based onn meaning!
 
-The best part? Everything is processed right on your machine. No cloud APIs, no tracking, and your data never leaves your browser.
+The best part? Everything is processed right on your machine
 
 ## The Cool Stuff
 
-- **Local-First Semantic Search**: Clip pages and search your vault using ML embeddings.
-- **Total Privacy**: We’re running transformers.js with WASM locally. Zero cloud dependency.
-- **Vector Storage**: Text chunks and their embeddings are dumped into IndexedDB so semantic searches are blazing fast.
-- **Quick Clipping**: Just hit the keyboard shortcut or click the popup button to instantly rip and save the current page.
-- **Smart Extraction**: Automatically pulls the text from the DOM and chops it into manageable 300-word chunks (plus metadata).
-- **Analytics & Control**: See your recent clips, check which domains you save from the most, and filter your search results by domain or similarity score.
-- **Vault Management**: You can export your entire database as a JSON backup and import it whenever.
+- **Local-First Semantic Search**: Clip pages and search your vault using ML embeddings
+- **Total Privacy**: We’re running transformers.js with WASM locally. Zero cloud dependency
+- **Vector Storage**: Text chunks and their embeddings are dumped into IndexedDB so semantic searches are blazing fast
+- **Quick Clipping**: Just hit the keyboard shortcut or click the popup button to instantly rip and save the current page
+- **Smart Extraction**: Automatically pulls the text from the DOM and chops it into manageable 300 word chunks (plus metadata)
+- **Analytics & Control**: See your recent clips, check which domains you save from the most, and filter your search results by domain or similarity score
+- **Vault Management**: You can export your entire database as a JSON backup and import it whenever
 
-## Under the Hood
 
-### Core Components
 
-- **content.js**: Runs on the page, handles the DOM scraping and text extraction.
-- **background.js**: The service worker that does the heavy lifting—manages the embeddings, talks to the database, and routes messages.
-- **db.js**: A wrapper around IndexedDB so storing and querying vectors with metadata (URL, title, domain, timestamp) doesn't make me pull my hair out.
-- **popup.js & popup.html**: The actual UI you interact with for searching, checking stats, and managing the vault.
-
-### The Tech Stack
-
-- **transformers.js**: Running the all-MiniLM-L6-v2 model entirely client-side.
-- **WASM**: Makes the embedding generation actually fast enough to use.
-- **IndexedDB**: The local browser database holding all the vectors.
-- **Chrome MV3 API**: Handling the service workers, content scripts, and storage.
 
 ## How It Actually Works
 
