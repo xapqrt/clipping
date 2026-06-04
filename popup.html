@@ -5,43 +5,342 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clipper</title>
     <style>
-       body { font-family: ui-monospace, Menlo, monospace; margin: 0; padding: 12px; width: 340px; background: #f7f8f4; }
-       h1 { font-size: 14px; margin: 0 0 8px; }    
-    #query { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #bbb; border-radius: 8px; }
-    .row { display: flex; gap: 8px; margin-top: 8px; }
-    button { flex: 1; padding: 8px; cursor: pointer; border-radius: 8px; border: 1px solid #333; background: #fff; }
-         mark { background: #fff176; color: #000; padding: 0 2px; border-radius: 2px; }
-    .tiny { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .tiny input { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #bbb; border-radius: 8px; }
-    #stats { margin-top: 8px; font-size: 11px; opacity: .8; }
-     #clear_btn { margin-top: 8px; width: 100%; }
-    #backup_row { margin-top: 8px; display: flex; gap: 8px; }
-     #recent { margin-top: 10px; font-size: 11px; max-height: 100px; overflow: auto; border-top: 1px dashed #bbb; padding-top: 8px; }
-   #domains { margin-top: 8px; font-size: 11px; max-height: 90px; overflow: auto; border-top: 1px dashed #bbb; padding-top: 8px; }
-     #results { margin-top: 10px; font-size: 12px; max-height: 300px; overflow: auto; }
-   </style>    
-    </head>
-    <body>
-    <h1>Clipper</h1>
-       <input id="query" type="text" placeholder="search memory..." />
-         <div class="row">
-         <button id="clip_btn">Clip Current Page</button>
-            <button id="search_btn">Search Local</button>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+            width: 380px;
+            min-height: 200px;
+            background: #0d0d0d;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+
+        /* ── nav tabs ── */
+        #nav {
+            display: flex;
+            background: #111;
+            border-bottom: 1px solid #222;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px 6px;
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font: inherit;
+            font-size: 11px;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            transition: color .15s, border-bottom .15s;
+            border-bottom: 2px solid transparent;
+        }
+        .tab-btn.active {
+            color: #66e2b3;
+            border-bottom-color: #66e2b3;
+        }
+        .tab-btn:hover:not(.active) { color: #aaa; }
+
+        /* ── panels ── */
+        .panel { display: none; padding: 12px; }
+        .panel.active { display: block; }
+
+        /* ── inputs & buttons ── */
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 8px 10px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font: inherit;
+            outline: none;
+            transition: border-color .15s;
+        }
+        input[type="text"]:focus,
+        input[type="number"]:focus { border-color: #66e2b3; }
+        input::placeholder { color: #444; }
+
+        .btn {
+            padding: 8px 12px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font: inherit;
+            font-size: 12px;
+            transition: background .15s, border-color .15s;
+        }
+        .btn:hover { background: #242424; border-color: #444; }
+        .btn:disabled { opacity: .4; cursor: default; }
+        .btn.primary {
+            background: #0e3028;
+            border-color: #66e2b3;
+            color: #66e2b3;
+        }
+        .btn.primary:hover { background: #143d33; }
+        .btn.danger { border-color: #c0392b; color: #e74c3c; }
+        .btn.danger:hover { background: #2a0a0a; }
+
+        /* ── search panel ── */
+        #search-row { display: flex; gap: 6px; margin-top: 8px; }
+        #search-row input { flex: 1; }
+        #filter-row { display: flex; gap: 6px; margin-top: 6px; }
+        #filter-row input { flex: 1; }
+
+        /* ── stats bar ── */
+        #stats-bar {
+            margin-top: 10px;
+            padding: 6px 8px;
+            background: #141414;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #555;
+            display: flex;
+            gap: 12px;
+        }
+        #stats-bar span { color: #66e2b3; }
+
+        /* ── results ── */
+        #results {
+            margin-top: 10px;
+            max-height: 340px;
+            overflow-y: auto;
+        }
+        .result-card {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #141414;
+            border: 1px solid #1e1e1e;
+            border-radius: 8px;
+            transition: border-color .15s;
+        }
+        .result-card:hover { border-color: #2e2e2e; }
+        .result-title {
+            font-weight: 600;
+            color: #ddd;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .result-score {
+            font-size: 10px;
+            color: #66e2b3;
+            margin-left: 6px;
+        }
+        .result-snippet {
+            margin: 5px 0;
+            color: #888;
+            font-size: 11px;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .result-snippet mark { background: #2a3d30; color: #66e2b3; border-radius: 2px; padding: 0 2px; }
+        .result-actions { display: flex; gap: 6px; margin-top: 6px; }
+        .result-actions a, .result-actions button {
+            font: inherit;
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: #1e1e1e;
+            border: 1px solid #2a2a2a;
+            color: #888;
+            cursor: pointer;
+            text-decoration: none;
+            transition: color .15s, border-color .15s;
+        }
+        .result-actions a:hover, .result-actions button:hover {
+            color: #ddd;
+            border-color: #444;
+        }
+
+        /* ── clip panel ── */
+        #clip-panel { }
+        #clip-status {
+            margin-top: 10px;
+            padding: 8px 10px;
+            background: #141414;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #888;
+            min-height: 32px;
+            line-height: 1.5;
+        }
+        #clip-status.ok { color: #66e2b3; }
+        #clip-status.err { color: #e74c3c; }
+
+        /* ── vault panel ── */
+        #vault-list {
+            margin-top: 10px;
+            max-height: 420px;
+            overflow-y: auto;
+        }
+        .vault-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px;
+            margin-bottom: 6px;
+            background: #141414;
+            border: 1px solid #1e1e1e;
+            border-radius: 8px;
+            transition: border-color .15s;
+        }
+        .vault-card:hover { border-color: #2e2e2e; }
+        .vault-favicon {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .vault-info { flex: 1; min-width: 0; }
+        .vault-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #ddd;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .vault-meta {
+            font-size: 10px;
+            color: #444;
+            margin-top: 3px;
+        }
+        .vault-snippet {
+            font-size: 10px;
+            color: #555;
+            margin-top: 4px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.4;
+        }
+        .vault-del {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            color: #333;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: color .15s;
+        }
+        .vault-del:hover { color: #e74c3c; }
+        #vault-empty {
+            text-align: center;
+            color: #333;
+            padding: 40px 0;
+            font-size: 12px;
+        }
+        #vault-search-row { display: flex; gap: 6px; }
+        #vault-search-row input { flex: 1; }
+
+        /* ── settings panel ── */
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .setting-row:last-child { border-bottom: none; }
+        .setting-label { color: #888; font-size: 12px; }
+        .setting-sub { font-size: 10px; color: #444; margin-top: 2px; }
+
+        /* ── misc ── */
+        .msg { font-size: 11px; color: #666; padding: 6px 0; }
+        .msg.ok { color: #66e2b3; }
+        .msg.err { color: #e74c3c; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+<!-- ── navigation ── -->
+<div id="nav">
+    <button class="tab-btn active" data-tab="search">Search</button>
+    <button class="tab-btn" data-tab="clip">Clip</button>
+    <button class="tab-btn" data-tab="vault">Vault</button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
+</div>
+
+<!-- ══════════════════ SEARCH PANEL ══════════════════ -->
+<div id="search-panel" class="panel active">
+    <input id="query" type="text" placeholder="Search your clipped pages..." />
+    <div id="search-row">
+        <input id="domain_filter" type="text" placeholder="domain filter" />
+        <input id="min_score" type="number" step="0.05" min="0" max="1" placeholder="min score" style="width:100px" />
+        <button id="search_btn" class="btn primary">Search</button>
     </div>
-   <div class ="tiny">
-     <input id="domain_filter" type="text" placeholder="domain filter (optional)" />
-       <input id="min_score" type="number" step="0.01" placeholder="min score, e.g. 0.2" />
-   </div>
-    <div id="stats">chunks: 0 | pages: 0</div>
-   <button id="clear_btn">Clear Local Vault</button>
-  <div id="backup_row">
-  <button id="export_btn">Export Backup</button>
-  <button id="import_btn">Import Backup</button>
-   </div>
-  <input  id="import_file" type="file" accept="application/json" style="display:none" />
-<div id="recent">recent clips will show here...</div>
-   <div id="domains">Top domains will show here...</div>
-   <div id="results">No query yet.</div>
-    <script type="module" src="popup.js"></script>
-    </body>
+    <div id="stats-bar">
+        chunks: <span id="stat-chunks">—</span>
+        &nbsp;|&nbsp;
+        pages: <span id="stat-pages">—</span>
+    </div>
+    <div id="results"><div class="msg">Type a query and hit Search.</div></div>
+</div>
+
+<!-- ══════════════════ CLIP PANEL ══════════════════ -->
+<div id="clip-panel" class="panel">
+    <button id="clip_btn" class="btn primary" style="width:100%;padding:12px">Clip Current Page</button>
+    <div id="clip-status" class="msg">Ready to clip.</div>
+
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #1a1a1a">
+        <div class="msg" style="margin-bottom:8px;color:#444">Recent Clips</div>
+        <div id="recent"></div>
+    </div>
+</div>
+
+<!-- ══════════════════ VAULT PANEL ══════════════════ -->
+<div id="vault-panel" class="panel">
+    <div id="vault-search-row">
+        <input id="vault_filter" type="text" placeholder="Filter by title or domain..." />
+        <button id="vault-refresh-btn" class="btn" title="Refresh">↺</button>
+    </div>
+    <div id="vault-list"><div id="vault-empty">Loading...</div></div>
+</div>
+
+<!-- ══════════════════ SETTINGS PANEL ══════════════════ -->
+<div id="settings-panel" class="panel">
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Export Vault</div>
+            <div class="setting-sub">Download all clipped data as JSON</div>
+        </div>
+        <button id="export_btn" class="btn">Export</button>
+    </div>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Import Vault</div>
+            <div class="setting-sub">Restore from a backup JSON file</div>
+        </div>
+        <button id="import_btn" class="btn">Import</button>
+    </div>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Clear Vault</div>
+            <div class="setting-sub">Delete all clipped data permanently</div>
+        </div>
+        <button id="clear_btn" class="btn danger">Clear All</button>
+    </div>
+    <div id="settings-msg" class="msg" style="margin-top:8px"></div>
+    <input id="import_file" type="file" accept="application/json" style="display:none" />
+</div>
+
+<script type="module" src="popup.js"></script>
+</body>
 </html>

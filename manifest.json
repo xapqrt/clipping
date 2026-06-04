@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "Clipper",
-    "version": "0.0.1",
-    "description": "Local-first semantic web clipper",
+    "version": "0.1.0",
+    "description": "Local-first semantic web clipper — clip pages and search by meaning, entirely offline.",
     "permissions": ["storage", "activeTab", "scripting", "contextMenus", "tabs"],
     "host_permissions": ["<all_urls>"],
     "background": {
@@ -20,9 +20,18 @@
             "run_at": "document_idle"
         }
     ],
+    "commands": {
+        "clipper-clip-activet": {
+            "suggested_key": {
+                "default": "Alt+Shift+C",
+                "mac": "Alt+Shift+C"
+            },
+            "description": "Clip the current page"
+        }
+    },
     "web_accessible_resources": [
         {
-         "resources": ["*.wasm", "wasm/*", "models/*", "vendor/*"],
+            "resources": ["*.wasm", "wasm/*", "models/*", "vendor/*"],
             "matches": ["<all_urls>"]
         }
     ]

@@ -1,35 +1,183 @@
-const query_input = document.getElementById("query");
-const search_btn = document.getElementById("search_btn");
-const clip_btn = document.getElementById("clip_btn");
-const clear_btn = document.getElementById("clear_btn");
-const export_btn = document.getElementById("export_btn");
-const import_btn = document.getElementById("import_btn");
-const import_file_input = document.getElementById("import_file");
-const stats_div = document.getElementById("stats");
-const recent_div = document.getElementById("recent");
-const domains_div = document.getElementById("domains");
-const domain_filter_input = document.getElementById("domain_filter");
-const min_score_input = document.getElementById("min_score");
-const result_div = document.getElementById("results");
-let last_hits = [];
+// popup.js – controller for the Clipper popup UI
 
-function escape_html(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+// nav
+const tab_btns    = document.querySelectorAll(".tab-btn");
+const panels      = document.querySelectorAll(".panel");
+
+// search panel
+const query_inp   = $("query");
+const search_btn  = $("search_btn");
+const domain_inp  = $("domain_filter");
+const score_inp   = $("min_score");
+const results_div = $("results");
+const stat_chunks = $("stat-chunks");
+const stat_pages  = $("stat-pages");
+
+// clip panel
+const clip_btn    = $("clip_btn");
+const clip_status = $("clip-status");
+const recent_div  = $("recent");
+
+// vault panel
+const vault_list  = $("vault-list");
+const vault_fil   = $("vault_filter");
+const vault_ref   = $("vault-refresh-btn");
+
+// settings panel
+const export_btn  = $("export_btn");
+const import_btn  = $("import_btn");
+const import_file = $("import_file");
+const clear_btn   = $("clear_btn");
+const settings_msg = $("settings-msg");
+
+let last_hits = [];
+let all_vault_pages = [];
+
+// ── tab nav ───────────────────────────────────────────────────────────────────
+
+tab_btns.forEach(btn => {
+    btn.addEventListener("click", () => {
+        tab_btns.forEach(b => b.classList.remove("active"));
+        panels.forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        const target = $(`${btn.dataset.tab}-panel`);
+        if (target) target.classList.add("active");
+
+        // Load vault data when switching to vault tab
+        if (btn.dataset.tab === "vault") load_vault();
+    });
+});
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function esc(str) {
+    return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
 }
+
+function time_ago(ts) {
+    if (!ts) return "";
+    const secs = Math.floor((Date.now() - ts) / 1000);
+    if (secs < 60)    return "just now";
+    if (secs < 3600)  return `${Math.floor(secs/60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs/3600)}h ago`;
+    return `${Math.floor(secs/86400)}d ago`;
+}
+
+function favicon_url(url) {
+    try {
+        const origin = new URL(url).origin;
+        return `https://www.google.com/s2/favicons?domain=${origin}&sz=16`;
+    } catch { return ""; }
+}
+
+async function send(type, extra = {}) {
+    return chrome.runtime.sendMessage({ type, ...extra });
+}
+
+// ── stats ─────────────────────────────────────────────────────────────────────
 
 async function refresh_stats() {
-try {
-    const res = await chrome.runtime.sendMessage({ type: "CLIPPER_STATS" });
-    const stats = res?.stats || { total_chunks: 0, unique_urls: 0 };
-    stats_div.textContent = `chunks: ${stats.total_chunks} | pages: ${stats.unique_urls}`;
-  } catch {
-    stats_div.textContent = "chunks: ? | pages: ?";
+    try {
+        const res = await send("CLIPPER_STATS");
+        const s = res?.stats || {};
+        stat_chunks.textContent = s.total_chunks ?? "—";
+        stat_pages.textContent  = s.unique_urls  ?? "—";
+    } catch {
+        stat_chunks.textContent = "?";
+        stat_pages.textContent  = "?";
+    }
 }
+
+// ── search ────────────────────────────────────────────────────────────────────
+
+function highlight(text, words) {
+    let out = esc(text);
+    for (const w of words) {
+        if (!w) continue;
+        const re = new RegExp(`(${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+        out = out.replace(re, "<mark>$1</mark>");
+    }
+    return out;
+}
+
+function render_results(hits) {
+    last_hits = hits;
+    if (!hits?.length) {
+        results_div.innerHTML = `<div class="msg">No results found.</div>`;
+        return;
+    }
+    const words = query_inp.value.trim().split(/\s+/).filter(Boolean);
+    results_div.innerHTML = hits.map((item, i) => {
+        const snip  = String(item.text_chunk || "").slice(0, 200).replace(/\s+/g, " ");
+        const score = Number(item.sim_score || 0).toFixed(3);
+        const title = item.title || item.url || "untitled";
+        return `
+        <div class="result-card">
+            <div style="display:flex;align-items:baseline;gap:4px">
+                <span class="result-title" title="${esc(item.url)}">${esc(title)}</span>
+                <span class="result-score">${score}</span>
+            </div>
+            <div class="result-snippet">${highlight(snip, words)}…</div>
+            <div class="result-actions">
+                <a href="${esc(item.url)}" target="_blank">open page</a>
+                <button class="copy-btn" data-idx="${i}" data-text="${esc(snip)}">copy snippet</button>
+            </div>
+        </div>`;
+    }).join("");
+
+    results_div.querySelectorAll(".copy-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(btn.dataset.text || "");
+                btn.textContent = "copied!";
+                setTimeout(() => btn.textContent = "copy snippet", 1500);
+            } catch {
+                btn.textContent = "failed";
+            }
+        });
+    });
+}
+
+search_btn.addEventListener("click", async () => {
+    const q = query_inp.value.trim();
+    if (!q) return;
+    search_btn.disabled = true;
+    results_div.innerHTML = `<div class="msg">Searching…</div>`;
+    try {
+        const res = await send("CLIPPER_SEARCH", {
+            query: q,
+            domain_filter: domain_inp.value.trim(),
+            min_score: score_inp.value ? Number(score_inp.value) : -1,
+            top_k: 15,
+        });
+        render_results(res?.hits || []);
+        refresh_stats();
+    } catch (e) {
+        results_div.innerHTML = `<div class="msg err">Search failed: ${esc(String(e))}</div>`;
+    } finally {
+        search_btn.disabled = false;
+    }
+});
+
+query_inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") search_btn.click();
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && last_hits[0]?.url)
+        chrome.tabs.create({ url: last_hits[0].url });
+});
+
+// ── clip ──────────────────────────────────────────────────────────────────────
+
+function set_clip_status(msg, cls = "") {
+    clip_status.textContent = msg;
+    clip_status.className = ["msg", cls].filter(Boolean).join(" ");
 }
 
 async function get_active_tab() {
@@ -37,227 +185,187 @@ async function get_active_tab() {
     return tab;
 }
 
-async function refresh_recent() {
- try {
-     const res = await chrome.runtime.sendMessage({ type: "CLIPPER_RECENT" });
-     const items = res?.items || [];
-     if (!items.length) {
-       recent_div.textContent = "recent clips will show here...";
-       return;
-     }
-
- recent_div.innerHTML = items
-      .map((x) => {
-        const label = escape_html(x.title || "untitled");
-        const url = escape_html(x.url || "");
-        return `<div style="margin-bottom:5px;"><a href="${url}" target="_blank">${label}</a></div>`;
-      })
-      .join("");
-  } catch {
-    recent_div.textContent = "failed to load recent clips";
-  }
-}
-
-async function refresh_domains() {
-    try {
-       const res = await chrome.runtime.sendMessage({ type: "CLIPPER_DOMAIN_COUNTS" });
-       const items = res?.items || [];
-       if (!items.length) {
-         domains_div.textContent = "top domains will show here...";
-         return;
-       }
-
-domains_div.innerHTML = items
-      .map((x) => `<div style="margin-bottom:4px;">${escape_html(x.domain)} <span style="opacity:.7">(${Number(x.chunks || 0)})</span></div>`)
-      .join("");
-  } catch {
-    domains_div.textContent = "failed to load domain counts";
-  }
-}
-
-async function trigger_clip() {
+async function do_clip() {
     const tab = await get_active_tab();
-    if(!tab?.id) return;
+    if (!tab?.id) { set_clip_status("No active tab found.", "err"); return; }
 
-   result_div.textContent = "Clipping page now...";
-   clip_btn.disabled = true;
-   
-   try {
+    clip_btn.disabled = true;
+    set_clip_status("Clipping…");
+
+    try {
         await chrome.tabs.sendMessage(tab.id, { type: "CLIPPER_CLIP" });
-        result_div.textContent = "Clipping page now...";
+        set_clip_status("Clip started — watch the page overlay for progress.", "ok");
     } catch {
-
-    await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["content.js"],
-    });
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    await chrome.tabs.sendMessage(tab.id, { type: "CLIPPER_CLIP" });
-    result_div.textContent = "Inject content script, clipping now.";
-} finally {
-    clip_btn.disabled = false;
+        // Content script not injected yet
+        try {
+            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+            await new Promise(r => setTimeout(r, 200));
+            await chrome.tabs.sendMessage(tab.id, { type: "CLIPPER_CLIP" });
+            set_clip_status("Injected & clipping — watch the page overlay.", "ok");
+        } catch (err) {
+            const msg = String(err);
+            if (msg.includes("Cannot access") || msg.includes("chrome://"))
+                set_clip_status("Cannot clip this page type (chrome:// or extension pages).", "err");
+            else
+                set_clip_status(`Clip failed: ${msg}`, "err");
+        }
+    } finally {
+        clip_btn.disabled = false;
+        setTimeout(() => refresh_recent(), 3000);
+        setTimeout(() => refresh_stats(), 3500);
+    }
 }
+
+clip_btn.addEventListener("click", () => do_clip());
+
+async function refresh_recent() {
+    try {
+        const res = await send("CLIPPER_RECENT");
+        const items = res?.items || [];
+        if (!items.length) {
+            recent_div.innerHTML = `<div class="msg">No clips yet.</div>`;
+            return;
+        }
+        recent_div.innerHTML = items.map(x => `
+            <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #1a1a1a">
+                <img src="${favicon_url(x.url)}" class="vault-favicon" onerror="this.style.display='none'" />
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:11px;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                        <a href="${esc(x.url)}" target="_blank" style="color:inherit;text-decoration:none">${esc(x.title || x.url)}</a>
+                    </div>
+                    <div style="font-size:10px;color:#444">${time_ago(x.ts)}</div>
+                </div>
+            </div>`).join("");
+    } catch {
+        recent_div.innerHTML = `<div class="msg err">Failed to load recent clips.</div>`;
+    }
 }
 
-function render_hits(hits) {
-    last_hits = hits;
-    if(!hits?.length) {
-        result_div.textContent = "No matches yet.";
+// ── vault ─────────────────────────────────────────────────────────────────────
+
+async function load_vault() {
+    vault_list.innerHTML = `<div id="vault-empty">Loading vault…</div>`;
+    try {
+        const res = await send("CLIPPER_GET_ALL");
+        all_vault_pages = res?.pages || [];
+        render_vault(all_vault_pages);
+    } catch (e) {
+        vault_list.innerHTML = `<div class="msg err">Failed to load vault: ${esc(String(e))}</div>`;
+    }
+}
+
+function render_vault(pages) {
+    if (!pages.length) {
+        vault_list.innerHTML = `<div id="vault-empty">Your vault is empty. Clip some pages first!</div>`;
         return;
     }
+    vault_list.innerHTML = pages.map(p => {
+        const domain  = p.domain || ((() => { try { return new URL(p.url).hostname; } catch { return ""; } })());
+        const ago     = time_ago(p.ts);
+        return `
+        <div class="vault-card" data-url="${esc(p.url)}">
+            <img src="${favicon_url(p.url)}" class="vault-favicon" onerror="this.style.display='none'" />
+            <div class="vault-info">
+                <div class="vault-title" title="${esc(p.url)}">
+                    <a href="${esc(p.url)}" target="_blank" style="color:inherit;text-decoration:none">${esc(p.title || p.url)}</a>
+                </div>
+                <div class="vault-meta">${esc(domain)} · ${p.chunks} chunk${p.chunks !== 1 ? "s" : ""} · ${ago}</div>
+                ${p.snippet ? `<div class="vault-snippet">${esc(p.snippet)}</div>` : ""}
+            </div>
+            <button class="vault-del" data-url="${esc(p.url)}" title="Remove from vault">×</button>
+        </div>`;
+    }).join("");
 
-    const q_words = query_input.value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    
-     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const marks = (txt) => {
-     let out = escape_html(txt);
-    for(const w of q_words) {
-     const re = new RegExp(`(${esc(w)})`, "ig");
-     out = out.replace(re, "<mark>$1</mark>");
+    vault_list.querySelectorAll(".vault-del").forEach(btn => {
+        btn.addEventListener("click", async e => {
+            e.stopPropagation();
+            const url = btn.dataset.url;
+            btn.disabled = true;
+            btn.textContent = "…";
+            try {
+                await send("CLIPPER_DELETE_URL", { url });
+                await load_vault();
+                refresh_stats();
+            } catch {
+                btn.textContent = "×";
+                btn.disabled = false;
+            }
+        });
+    });
+}
+
+vault_fil.addEventListener("input", () => {
+    const q = vault_fil.value.trim().toLowerCase();
+    if (!q) { render_vault(all_vault_pages); return; }
+    const filtered = all_vault_pages.filter(p =>
+        (p.title || "").toLowerCase().includes(q) ||
+        (p.domain || "").toLowerCase().includes(q) ||
+        (p.url || "").toLowerCase().includes(q)
+    );
+    render_vault(filtered);
+});
+
+vault_ref.addEventListener("click", load_vault);
+
+// ── settings ──────────────────────────────────────────────────────────────────
+
+function set_settings_msg(msg, cls = "") {
+    settings_msg.textContent = msg;
+    settings_msg.className = ["msg", cls].filter(Boolean).join(" ");
+}
+
+export_btn.addEventListener("click", async () => {
+    try {
+        const res = await send("CLIPPER_EXPORT_ALL");
+        if (!res?.ok || !res.payload) { set_settings_msg("Export failed.", "err"); return; }
+        const blob = new Blob([JSON.stringify(res.payload, null, 2)], { type: "application/json" });
+        const a    = document.createElement("a");
+        a.href     = URL.createObjectURL(blob);
+        a.download = `clipper-backup-${Date.now()}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 500);
+        set_settings_msg(`Exported ${res.payload.count} chunks.`, "ok");
+    } catch (e) {
+        set_settings_msg(`Export failed: ${String(e)}`, "err");
     }
-    return out;
-};
-    
-    const html = hits
-    .map((item) => {
-       const text = String(item.text_chunk || "");
-       const snip = text.slice(0, 140).replace(/\s+/g, " ");
-       const score = Number(item.sim_score || 0).toFixed(3);
-      const safe_title = escape_html(item.title || "untitled");
-           const safe_url = escape_html(item.url || "");     
-       return `
-        <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed #999;">
-           <div><strong>${safe_title}</strong><span style="opacity:.7">score ${score}</span></div>
-           <div style ="margin:4px 0;">${marks(snip)}...</div>
-           <div style="display:flex;gap:8px;margin-top:6px;align-items:center;"><a href="${safe_url}" target="_blank">open source</a><button data-url="${safe_url}" data-text="${escape_html(snip)}" class="copy_btn">copy snippet</button></div>
-        </div>
-        `;
-    })
-    .join("");
-
-    result_div.innerHTML = html;
-
-
-  const copyBtns = result_div.querySelectorAll(".copy_btn");
-copyBtns.forEach((b) => {
- b.addEventListener("click", async (ev) => {
-  try {
- await navigator.clipboard.writeText(b.getAttribute("data-text") || "");
-   result_div.textContent = "Snippet copied to clipboard.";
- setTimeout(() => refresh_stats().catch(() => {}), 800)
-  } catch {
-   result_div.textContent = "Copy failed.";
-  }
- });
-});
-}
-
-search_btn.addEventListener("click", async () => {
-    const raw_q = query_input.value.trim();
-    if(!raw_q) return;
-
-  search_btn.disabled = true;
-    result_div.textContent = "Searching local vectors...";
-    
-   try {
-    const domain_filter = domain_filter_input.value.trim();
-    const min_score = min_score_input.value.trim();
-    const res = await chrome.runtime.sendMessage({ 
-        type: "CLIPPER_SEARCH",
-        query: raw_q,
-        domain_filter,
-      min_score: min_score ? Number(min_score) : -1
-    });
-
-    render_hits(res?.hits || []);
-    refresh_stats().catch(() => {});
-    refresh_recent().catch(() => {});
-    refresh_domains().catch(() => {});
-}finally {
-    search_btn.disabled = false;
-}
 });
 
-query_input.addEventListener("keydown", (ev) => {
-     if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
-      if (last_hits[0]?.url) {
-     chrome.tabs.create({ url: last_hits[0].url });
-    return;
-      }
-     }
-    
-    
-    if(ev.key === "Enter") search_btn.click();
-});
+import_btn.addEventListener("click", () => import_file.click());
 
-clip_btn.addEventListener("click", () => {
-    trigger_clip().catch((e) => {
-   const msg = String(e);
-if(msg.includes("Receiving end does not exist") || msg.includes("Cannot access")) {
-    result_div.textContent = "Clip blocked on this page type (like chrome:// or web store).";
-    return;
-}
-result_div.textContent = `Clip failed: ${msg}`;
-    });
+import_file.addEventListener("change", async () => {
+    const file = import_file.files?.[0];
+    if (!file) return;
+    try {
+        const payload = JSON.parse(await file.text());
+        const res = await send("CLIPPER_IMPORT_ALL", { payload });
+        if (!res?.ok) { set_settings_msg("Import failed.", "err"); return; }
+        const s = res.stats || {};
+        set_settings_msg(`Imported! Now ${s.total_chunks} chunks across ${s.unique_urls} pages.`, "ok");
+        refresh_stats();
+    } catch (e) {
+        set_settings_msg(`Import failed: ${String(e)}`, "err");
+    } finally {
+        import_file.value = "";
+    }
 });
 
 clear_btn.addEventListener("click", async () => {
-    const res = await chrome.runtime.sendMessage({ type: "CLIPPER_CLEAR_ALL" });
-    result_div.textContent = res?.ok ? "Local vault cleared." : "Clear failed.";
-    await refresh_stats();
-    await refresh_recent();
-});
-
-export_btn.addEventListener("click", async () => {
-try {
-    const res = await chrome.runtime.sendMessage({ type: "CLIPPER_EXPORT_ALL" });
-    if (!res?.ok || !res.payload) {
-      result_div.textContent = "Export failed.";
-      return;
+    if (!confirm("Delete all clipped data? This cannot be undone.")) return;
+    try {
+        const res = await send("CLIPPER_CLEAR_ALL");
+        if (res?.ok) {
+            set_settings_msg("Vault cleared.", "ok");
+            refresh_stats();
+            all_vault_pages = [];
+        } else {
+            set_settings_msg("Clear failed.", "err");
+        }
+    } catch (e) {
+        set_settings_msg(`Error: ${String(e)}`, "err");
     }
-   
-    const blob = new Blob([JSON.stringify(res.payload, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    const obj_url = URL.createObjectURL(blob);
-    a.href = obj_url;
-    a.download = `clipper-backup-${Date.now()}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(obj_url), 500);
-    result_div.textContent = `Exported ${res.payload.count} chunks.`;
-  } catch {
-    result_div.textContent = "Export failed.";
-}
 });
 
-import_btn.addEventListener("click", () => import_file_input.click());
+// ── init ──────────────────────────────────────────────────────────────────────
 
-import_file_input.addEventListener("change", async () => {
-const file = import_file_input.files?.[0];
-if(!file) return;
-
-try {
-const text = await file.text();
-const payload = JSON.parse(text);
-const res = await chrome.runtime.sendMessage({ type: "CLIPPER_IMPORT_ALL", payload });
-if(!res?.ok) {
-result_div.textContent = "Import failed.";
-return;
-}
-result_div.textContent = "Import complete.";
-await refresh_stats();
-await refresh_recent();
-}catch(e) {
-result_div.textContent = `Import failed: ${String(e)}`;
-} finally {
-import_file_input.value = "";
-}
-});
-
-refresh_stats().catch((e) => {
-    result_div.textContent = `Stats failed: ${String(e)}`;
-});
-
-refresh_recent().catch(() => {});
+refresh_stats();
+refresh_recent();
