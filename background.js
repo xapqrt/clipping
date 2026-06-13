@@ -149,6 +149,7 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     text_chunk: chunk,
                     embedding:  to_storable_embedding(emb),
                     stored_at:  Date.now(),
+                    source:     data.source || "page",
                 });
                 const pct = 10 + Math.round(((i + 1) / data.chunks.length) * 85);
                 await safe_progress(tab_id, `Embedding ${i + 1}/${data.chunks.length}...`, pct);
@@ -156,6 +157,9 @@ ext_api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
             await put_vector_rows(rows);
             await safe_progress(tab_id, "Saved to Clipper!", 100);
+            try {
+                ext_api.runtime.sendMessage({ type: "CLIPPER_PAGE_STORED", url: data.url });
+            } catch (err) { /* popup might be closed */ }
             sendResponse({ ok: true, stored: rows.length });
         })().catch(e => {
             console.error("[Clipper] STORE_PAGE error:", e);

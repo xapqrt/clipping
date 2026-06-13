@@ -53,6 +53,7 @@ for(const row of rows) {
         id: row.id,
         url: row.url,
         title: row.title,
+        domain: row.domain || "",
         text_chunk: row.text_chunk,
         embedding: row.embedding,
         stored_at: row.stored_at || Date.now(),
@@ -216,8 +217,11 @@ for(const row of payload.rows) {
         id: row.id,
         url: row.url,
         title: row.title || "",
+        domain: row.domain || (() => { try { return new URL(row.url).hostname.toLowerCase(); } catch { return ""; } })(),
         text_chunk: row.text_chunk || "",
         embedding: row.embedding,
+        stored_at: row.stored_at || Date.now(),
+        source: row.source || "page",
     });
 }
 

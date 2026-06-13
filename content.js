@@ -64,9 +64,13 @@ function extract_text() {
                 let el = node.parentElement;
                 while (el && el !== document.body) {
                     if (skip_tags.has(el.tagName)) return NodeFilter.FILTER_REJECT;
-                    const s = getComputedStyle(el);
-                    if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0")
-                        return NodeFilter.FILTER_REJECT;
+                    try {
+                        const s = getComputedStyle(el);
+                        if (!s || s.display === "none" || s.visibility === "hidden")
+                            return NodeFilter.FILTER_REJECT;
+                    } catch (e) {
+                        // Fallback: if style lookup fails/throws, assume visible
+                    }
                     el = el.parentElement;
                 }
                 const text = node.nodeValue?.trim();
@@ -95,7 +99,14 @@ function chunk_text(text, words_per_chunk = 300) {
 async function run_clip_flow() {
     toast_step("Extracting text...", 5);
 
-    const raw = extract_text();
+    let raw = window.getSelection().toString().trim();
+    let is_selection = false;
+    if (raw && raw.length >= 10) {
+        is_selection = true;
+    } else {
+        raw = extract_text();
+    }
+
     if (!raw || raw.length < 50) {
         toast_step("No useful text found on this page", 100);
         dismiss_toast(2000);
@@ -109,13 +120,19 @@ async function run_clip_flow() {
         return;
     }
 
-    toast_step(`Sending ${chunks.length} chunks to background...`, 15);
+    const label = is_selection ? "selection" : "page";
+    toast_step(`Sending ${chunks.length} ${label} chunks...`, 15);
 
     let res;
     try {
         res = await chrome.runtime.sendMessage({
             type: "CLIPPER_STORE_PAGE",
-            payload: { url: location.href, title: document.title, chunks },
+            payload: {
+                url: location.href,
+                title: is_selection ? `[Selection] ${document.title}` : document.title,
+                chunks,
+                source: is_selection ? "selection" : "page"
+            },
         });
     } catch (err) {
         toast_step(`Error: ${err.message}`, 100);

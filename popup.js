@@ -20,6 +20,7 @@ const stat_pages  = $("stat-pages");
 const clip_btn    = $("clip_btn");
 const clip_status = $("clip-status");
 const recent_div  = $("recent");
+const domains_div = $("top-domains");
 
 // vault panel
 const vault_list  = $("vault-list");
@@ -86,13 +87,25 @@ async function send(type, extra = {}) {
 
 async function refresh_stats() {
     try {
-        const res = await send("CLIPPER_STATS");
+        const res = await send("CLIPPER_HEALTH");
         const s = res?.stats || {};
         stat_chunks.textContent = s.total_chunks ?? "—";
         stat_pages.textContent  = s.unique_urls  ?? "—";
+        const stat_model = $("stat-model");
+        if (stat_model) {
+            if (res?.model) {
+                stat_model.textContent = "Local ML";
+                stat_model.style.color = "#66e2b3";
+            } else {
+                stat_model.textContent = "Fallback";
+                stat_model.style.color = "#e74c3c";
+            }
+        }
     } catch {
         stat_chunks.textContent = "?";
         stat_pages.textContent  = "?";
+        const stat_model = $("stat-model");
+        if (stat_model) stat_model.textContent = "?";
     }
 }
 
@@ -241,6 +254,24 @@ async function refresh_recent() {
     }
 }
 
+async function refresh_top_domains() {
+    try {
+        const res = await send("CLIPPER_DOMAIN_COUNTS");
+        const items = res?.items || [];
+        if (!items.length) {
+            domains_div.innerHTML = `<div class="msg">No domain data yet.</div>`;
+            return;
+        }
+        domains_div.innerHTML = items.map(x => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1a1a1a">
+                <span style="font-size:11px;color:#ccc">${esc(x.domain)}</span>
+                <span style="font-size:10px;color:#66e2b3">${x.chunks} chunk${x.chunks !== 1 ? "s" : ""}</span>
+            </div>`).join("");
+    } catch {
+        domains_div.innerHTML = `<div class="msg err">Failed to load top domains.</div>`;
+    }
+}
+
 // ── vault ─────────────────────────────────────────────────────────────────────
 
 async function load_vault() {
@@ -342,6 +373,8 @@ import_file.addEventListener("change", async () => {
         const s = res.stats || {};
         set_settings_msg(`Imported! Now ${s.total_chunks} chunks across ${s.unique_urls} pages.`, "ok");
         refresh_stats();
+        refresh_recent();
+        refresh_top_domains();
     } catch (e) {
         set_settings_msg(`Import failed: ${String(e)}`, "err");
     } finally {
@@ -356,6 +389,8 @@ clear_btn.addEventListener("click", async () => {
         if (res?.ok) {
             set_settings_msg("Vault cleared.", "ok");
             refresh_stats();
+            refresh_recent();
+            refresh_top_domains();
             all_vault_pages = [];
         } else {
             set_settings_msg("Clear failed.", "err");
@@ -365,7 +400,21 @@ clear_btn.addEventListener("click", async () => {
     }
 });
 
+// ── message listener ─────────────────────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === "CLIPPER_PAGE_STORED") {
+        refresh_stats();
+        refresh_recent();
+        refresh_top_domains();
+        if (document.querySelector(".tab-btn[data-tab='vault']").classList.contains("active")) {
+            load_vault();
+        }
+    }
+});
+
 // ── init ──────────────────────────────────────────────────────────────────────
 
 refresh_stats();
 refresh_recent();
+refresh_top_domains();
